@@ -1,11 +1,22 @@
 import cv2
 import time
+import math
+import os
+from datetime import datetime
 from hand_tracking import HandTracker
-from gestures import get_scroll_direction, PalmTimer, control_cursor, volume_control_gesture
+from gestures import control_cursor, get_scroll_direction, PalmTimer, volume_control_gesture
 from actions import scroll_up, scroll_down
 
-# Scroll cooldown settings
-SCROLL_DELAY = 0.2  # 200 milliseconds
+try:
+    import pyautogui as pag
+except Exception:
+    pag = None
+
+SCROLL_DELAY = 0.2
+PINCH_THRESHOLD = 0.05
+PINCH_VIS_RADIUS = 18
+PINCH_COOLDOWN = 0.5
+SCREENSHOT_COOLDOWN = 2.0
 
 def main():
     cap = cv2.VideoCapture(0)
@@ -19,78 +30,55 @@ def main():
     window_name = 'Webcam'
     cv2.namedWindow(window_name)
     last_scroll_time = 0
-    log_message = ""
     prev_x, prev_y = 0, 0
+    log_message = ""
 
     while True:
         ret, frame = cap.read()
         if not ret:
-            print("Error: Failed to grab frame.")
             break
 
         frame, hand_data = tracker.find_hands(frame)
 
         if not hand_data:
-            log_message = "No hands detected. Place your hands in front of the camera."
+            log_message = "No hands detected"
             palm_timer.reset()
         else:
-            current_time = time.time()
-
-            # Process the first detected hand
             hand = hand_data[0]
             landmarks = hand['landmarks']
-            label = hand['label']  # 'Left' or 'Right'
+            label = hand['label']
+            current_time = time.time()
 
-            # ------------------- Palm Exit -------------------
             if palm_timer.update(landmarks):
-                log_message = "Open palm held for 5 seconds. Exiting..."
-                cv2.putText(frame, log_message, (10, frame.shape[0] - 40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
-                cv2.imshow(window_name, frame)
-                cv2.waitKey(2000)
                 break
 
-            # Show countdown while holding palm
             elapsed = palm_timer.get_elapsed_time()
             if elapsed > 0:
-                remaining = 5 - elapsed
-                log_message = f"Hold palm to exit: {remaining:.1f}s remaining"
+                log_message = f"Hold palm to exit: {5 - elapsed:.1f}s"
             else:
-                # ------------------- Scroll Gesture -------------------
                 if current_time - last_scroll_time > SCROLL_DELAY:
-                    scroll_direction = get_scroll_direction(landmarks)
-                    if scroll_direction == 'up':
+                    direction = get_scroll_direction(landmarks)
+                    if direction == "up":
                         scroll_up()
-                        log_message = f"{label} hand: Peace Sign - Scroll Up"
+                        log_message = "Scroll Up"
                         last_scroll_time = current_time
-                    elif scroll_direction == 'down':
+                    elif direction == "down":
                         scroll_down()
-                        log_message = f"{label} hand: Peace Sign - Scroll Down"
+                        log_message = "Scroll Down"
                         last_scroll_time = current_time
-                    else:
-                        log_message = f"{label} hand detected"
 
-                # ------------------- Volume Control -------------------
                 gesture_result = volume_control_gesture(landmarks, label)
                 if gesture_result:
                     log_message = gesture_result
 
-            # ------------------- Cursor Control -------------------
             prev_x, prev_y = control_cursor(landmarks, prev_x, prev_y)
 
-        # Overlay log message
         if log_message:
-            cv2.putText(frame, log_message, (10, frame.shape[0] - 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, log_message, (10, frame.shape[0]-40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
 
         cv2.imshow(window_name, frame)
-        key = cv2.waitKey(1) & 0xFF
-
-        if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
-            print("To close the webcam, press the 'Esc' key.")
-            break
-
-        if key == 27:  # ESC to exit
+        if cv2.waitKey(1) & 0xFF == 27:
             break
 
     cap.release()
