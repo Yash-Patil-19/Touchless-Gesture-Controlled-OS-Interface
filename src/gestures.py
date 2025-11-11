@@ -144,7 +144,7 @@ def volume_control_gesture(landmarks, hand_label):
     global last_volume_time
     current_time = time.time()
     if current_time - last_volume_time < VOLUME_COOLDOWN:
-        return None  # prevent rapid repeats
+        return None
 
     if not landmarks or hand_label not in ["Left", "Right"]:
         return None
@@ -152,7 +152,7 @@ def volume_control_gesture(landmarks, hand_label):
     tips = [4, 8, 12, 16, 20]  # Thumb, Index, Middle, Ring, Pinky
     pips = [2, 6, 10, 14, 18]
 
-    margin = 0.04  # increase margin for better accuracy
+    margin = 0.04
     fingers_up = [landmarks[tip].y < landmarks[pip].y - margin for tip, pip in zip(tips, pips)]
 
     # ------------------- Volume Up (Right Hand) -------------------

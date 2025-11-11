@@ -13,7 +13,7 @@ class HandTracker:
         )
     
     def find_hands(self, frame):
-        # Flip the frame horizontally for mirror effect
+        # mirror effect
         frame = cv2.flip(frame, 1)
         
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -22,13 +22,8 @@ class HandTracker:
         hand_data = []
         if results.multi_hand_landmarks and results.multi_handedness:
             for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
-                # Draw landmarks
                 mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-                
-                # Get hand label (Left or Right)
                 hand_label = handedness.classification[0].label
-                
-                # Store hand data
                 hand_data.append({
                     'landmarks': hand_landmarks.landmark,
                     'label': hand_label

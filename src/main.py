@@ -5,7 +5,7 @@ from gestures import get_scroll_direction, PalmTimer, control_cursor, volume_con
 from actions import scroll_up, scroll_down
 
 # Scroll cooldown settings
-SCROLL_DELAY = 0.2  # 200 milliseconds
+SCROLL_DELAY = 0.2 
 
 def main():
     cap = cv2.VideoCapture(0)
