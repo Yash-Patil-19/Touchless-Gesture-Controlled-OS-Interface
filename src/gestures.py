@@ -98,6 +98,21 @@ class PalmTimer:
     def get_elapsed_time(self):
         return time.time() - self.start_time if self.is_timing and self.start_time else 0
 
+# ------------------- Pinch Gesture -------------------
+
+def is_pinch(landmarks, threshold=0.05):
+    """
+    Detects a pinch between thumb tip and index tip.
+    Returns (True, index_landmark) when pinch detected; (False, None) otherwise.
+    """
+    if not landmarks:
+        return False, None
+
+    thumb = landmarks[mp_hands.HandLandmark.THUMB_TIP]
+    index = landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+    dist = math.hypot(thumb.x - index.x, thumb.y - index.y)
+    return (dist < threshold), index
+
 # ------------------- Cursor Control -------------------
 
 def control_cursor(landmarks, prev_x, prev_y, smoothing=5, margin=0.01):
@@ -127,9 +142,6 @@ def control_cursor(landmarks, prev_x, prev_y, smoothing=5, margin=0.01):
     return prev_x, prev_y
 
 # ------------------- Volume Control Gestures -------------------
-
-import pyautogui
-import time
 
 last_volume_time = 0
 VOLUME_COOLDOWN = 0.2  # seconds
@@ -168,7 +180,3 @@ def volume_control_gesture(landmarks, hand_label):
         return "Volume Down"
 
     return None
-
-
-
-
