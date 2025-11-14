@@ -1,15 +1,16 @@
 import mediapipe as mp
 import time
-import pyautogui
+import pyautogui as pag
 import numpy as np
 import math
 
 mp_hands = mp.solutions.hands
 
-# ------------------- Existing Hand Gesture Functions -------------------
+# -------------------------------------------------------
+# FIST / OPEN PALM / PEACE SIGN
+# -------------------------------------------------------
 
 def is_fist(landmarks):
-    """Return True if the hand is a closed fist."""
     if not landmarks:
         return False
     tips = [8, 12, 16, 20]
@@ -19,61 +20,83 @@ def is_fist(landmarks):
             return False
     return True
 
+
 def is_open_palm(landmarks):
-    """Return True if all fingers (including thumb) are extended."""
     if not landmarks:
         return False
     tips = [8, 12, 16, 20]
     mcps = [5, 9, 13, 17]
+
+    # Fingers extended
     for tip, mcp in zip(tips, mcps):
         if landmarks[tip].y > landmarks[mcp].y:
             return False
+
+    # Thumb slightly open
     thumb_tip = landmarks[mp_hands.HandLandmark.THUMB_TIP]
     thumb_mcp = landmarks[mp_hands.HandLandmark.THUMB_MCP]
-    return abs(thumb_tip.x - thumb_mcp.x) >= 0.04
+    return abs(thumb_tip.x - thumb_mcp.x) >= 0.03
+
 
 def is_peace_sign(landmarks):
-    """Return True if index & middle fingers are extended and others folded."""
     if not landmarks:
         return False
 
-    def distance(p1, p2):
-        return math.hypot(p1.x - p2.x, p1.y - p2.y)
+    def distance(a, b):
+        return math.hypot(a.x - b.x, a.y - b.y)
 
     idx_tip = landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP]
     idx_pip = landmarks[mp_hands.HandLandmark.INDEX_FINGER_PIP]
+
     mid_tip = landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
     mid_pip = landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_PIP]
+
     ring_tip = landmarks[mp_hands.HandLandmark.RING_FINGER_TIP]
     ring_mcp = landmarks[mp_hands.HandLandmark.RING_FINGER_MCP]
+
     pinky_tip = landmarks[mp_hands.HandLandmark.PINKY_TIP]
     pinky_mcp = landmarks[mp_hands.HandLandmark.PINKY_MCP]
 
-    index_extended = distance(idx_tip, idx_pip) > 0.04
-    middle_extended = distance(mid_tip, mid_pip) > 0.04
+    # --- FIXED threshold (was 0.04 -> too strict)
+    index_extended = distance(idx_tip, idx_pip) > 0.03
+    middle_extended = distance(mid_tip, mid_pip) > 0.03
+
     ring_folded = distance(ring_tip, ring_mcp) < 0.06
     pinky_folded = distance(pinky_tip, pinky_mcp) < 0.06
 
     return index_extended and middle_extended and ring_folded and pinky_folded
 
+
+# -------------------------------------------------------
+# SCROLL DIRECTION
+# -------------------------------------------------------
+
 def get_scroll_direction(landmarks):
-    """Return 'up', 'down', or None based on peace sign orientation."""
     if not is_peace_sign(landmarks):
         return None
+
     wrist = landmarks[mp_hands.HandLandmark.WRIST]
     idx_tip = landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP]
     mid_tip = landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
+
     avg_y = (idx_tip.y + mid_tip.y) / 2
-    if avg_y < wrist.y - 0.05:
-        return 'up'
-    elif avg_y > wrist.y + 0.05:
-        return 'down'
+
+    # --- FIXED thresholds ---
+    # Peace finger up → avg_y smaller than wrist.y
+    # Peace finger down → avg_y larger than wrist.y
+    if avg_y < wrist.y - 0.02:
+        return "up"
+    elif avg_y > wrist.y + 0.02:
+        return "down"
+
     return None
 
-# ------------------- Palm Timer Class -------------------
+
+# -------------------------------------------------------
+# PALM TIMER
+# -------------------------------------------------------
 
 class PalmTimer:
-    """Track how long an open palm gesture is sustained."""
     def __init__(self, timeout_seconds=5):
         self.timeout_seconds = timeout_seconds
         self.start_time = None
@@ -96,87 +119,88 @@ class PalmTimer:
         self.is_timing = False
 
     def get_elapsed_time(self):
-        return time.time() - self.start_time if self.is_timing and self.start_time else 0
+        return time.time() - self.start_time if self.is_timing else 0
 
-# ------------------- Pinch Gesture -------------------
+
+# -------------------------------------------------------
+# PINCH
+# -------------------------------------------------------
 
 def is_pinch(landmarks, threshold=0.05):
-    """
-    Detects a pinch between thumb tip and index tip.
-    Returns (True, index_landmark) when pinch detected; (False, None) otherwise.
-    """
     if not landmarks:
         return False, None
 
     thumb = landmarks[mp_hands.HandLandmark.THUMB_TIP]
     index = landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+
     dist = math.hypot(thumb.x - index.x, thumb.y - index.y)
+
     return (dist < threshold), index
 
-# ------------------- Cursor Control -------------------
+
+# -------------------------------------------------------
+# CURSOR CONTROL
+# -------------------------------------------------------
 
 def control_cursor(landmarks, prev_x, prev_y, smoothing=5, margin=0.01):
-    """Move the system cursor following index fingertip when raised."""
     INDEX_TIP = 8
     INDEX_PIP = 6
-    SCREEN_WIDTH, SCREEN_HEIGHT = pyautogui.size()
+    SCREEN_WIDTH, SCREEN_HEIGHT = pag.size()
     CAM_WIDTH, CAM_HEIGHT = 640, 480
 
-    def is_index_active(lm):
+    def active(lm):
         return lm[INDEX_TIP].y < lm[INDEX_PIP].y - margin
 
-    if is_index_active(landmarks):
+    if active(landmarks):
         tip = landmarks[INDEX_TIP]
-        cam_x = int(tip.x * CAM_WIDTH)
-        cam_y = int(tip.y * CAM_HEIGHT)
+        cx = int(tip.x * CAM_WIDTH)
+        cy = int(tip.y * CAM_HEIGHT)
 
-        screen_x = np.interp(cam_x, [0, CAM_WIDTH], [0, SCREEN_WIDTH])
-        screen_y = np.interp(cam_y, [0, CAM_HEIGHT], [0, SCREEN_HEIGHT])
+        sx = np.interp(cx, [0, CAM_WIDTH], [0, SCREEN_WIDTH])
+        sy = np.interp(cy, [0, CAM_HEIGHT], [0, SCREEN_HEIGHT])
 
-        curr_x = prev_x + (screen_x - prev_x) / smoothing
-        curr_y = prev_y + (screen_y - prev_y) / smoothing
+        new_x = prev_x + (sx - prev_x) / smoothing
+        new_y = prev_y + (sy - prev_y) / smoothing
 
-        pyautogui.moveTo(curr_x, curr_y)
-        return curr_x, curr_y
+        pag.moveTo(new_x, new_y)
+        return new_x, new_y
 
     return prev_x, prev_y
 
-# ------------------- Volume Control Gestures -------------------
+
+# -------------------------------------------------------
+# VOLUME CONTROL
+# -------------------------------------------------------
 
 last_volume_time = 0
-VOLUME_COOLDOWN = 0.2  # seconds
+VOLUME_COOLDOWN = 0.3
 
 def volume_control_gesture(landmarks, hand_label):
-    """
-    Strict Volume Control with hand labels:
-    - Volume Up: Right hand, Thumb + Index fingers up
-    - Volume Down: Left hand, Thumb + Index fingers up
-    """
-
     global last_volume_time
     current_time = time.time()
+
     if current_time - last_volume_time < VOLUME_COOLDOWN:
         return None
 
-    if not landmarks or hand_label not in ["Left", "Right"]:
+    if not landmarks:
         return None
 
-    tips = [4, 8, 12, 16, 20]  # Thumb, Index, Middle, Ring, Pinky
-    pips = [2, 6, 10, 14, 18]
+    PINKY_TIP = mp_hands.HandLandmark.PINKY_TIP
+    PINKY_PIP = mp_hands.HandLandmark.PINKY_PIP
 
-    margin = 0.04
-    fingers_up = [landmarks[tip].y < landmarks[pip].y - margin for tip, pip in zip(tips, pips)]
+    tip = landmarks[PINKY_TIP]
+    pip = landmarks[PINKY_PIP]
 
-    # ------------------- Volume Up (Right Hand) -------------------
-    if hand_label == "Right" and fingers_up[0] and fingers_up[1] and not any(fingers_up[2:]):
-        pyautogui.press("volumeup")
+    pinky_up = tip.y < pip.y - 0.03
+
+    if pinky_up:
         last_volume_time = current_time
-        return "Volume Up"
 
-    # ------------------- Volume Down (Left Hand) -------------------
-    if hand_label == "Left" and fingers_up[0] and fingers_up[1] and not any(fingers_up[2:]):
-        pyautogui.press("volumedown")
-        last_volume_time = current_time
-        return "Volume Down"
+        if hand_label == "Right":
+            pag.press("volumeup")
+            return "Volume Up"
+        elif hand_label == "Left":
+            pag.press("volumedown")
+            return "Volume Down"
 
     return None

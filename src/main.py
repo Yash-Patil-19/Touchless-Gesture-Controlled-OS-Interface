@@ -3,10 +3,11 @@ import time
 import math
 from hand_tracking import HandTracker
 from gestures import get_scroll_direction, PalmTimer, is_pinch, control_cursor, volume_control_gesture
-from actions import scroll_up, scroll_down
+from actions import scroll_up, scroll_down, take_screenshot
 import numpy as np
+import os
+from datetime import datetime
 
-# optional OS click library
 try:
     import pyautogui as pag
 except Exception:
@@ -17,6 +18,7 @@ SCROLL_DELAY = 0.2  # 200 milliseconds
 PINCH_THRESHOLD = 0.05
 PINCH_VIS_RADIUS = 18
 PINCH_COOLDOWN = 0.5  # seconds between clicks per hand
+SCREENSHOT_COOLDOWN = 2.0
 
 def main():
     cap = cv2.VideoCapture(0)
@@ -30,29 +32,49 @@ def main():
     window_name = 'Webcam'
     cv2.namedWindow(window_name)
     last_scroll_time = 0
-    log_message = ""
     prev_x, prev_y = 0, 0
+    log_message = ""
 
     # Per-hand state for pinch clicks
     last_pinch_state = {}   # e.g. {'Left': False, 'Right': False}
     last_click_time = {}    # e.g. {'Left': 0.0, 'Right': 0.0}
+    last_screenshot_time = 0
 
     while True:
         ret, frame = cap.read()
         if not ret:
-            print("Error: Failed to grab frame.")
             break
 
         frame, hand_data = tracker.find_hands(frame)
         h, w, _ = frame.shape
 
         if not hand_data:
-            log_message = "No hands detected. Place your hands in front of the camera."
+            log_message = "No hands detected"
             palm_timer.reset()
         else:
             current_time = time.time()
             
-            # --- Cursor Control (uses first hand) ---
+            # --- Two-Hand Screenshot Gesture ---
+            if len(hand_data) == 2:
+                hand1, hand2 = hand_data[0], hand_data[1]
+                pinched1, _ = is_pinch(hand1['landmarks'], threshold=PINCH_THRESHOLD)
+                pinched2, _ = is_pinch(hand2['landmarks'], threshold=PINCH_THRESHOLD)
+
+                if pinched1 and pinched2:
+                    if current_time - last_screenshot_time > SCREENSHOT_COOLDOWN:
+                        log_message = take_screenshot()
+                        last_screenshot_time = current_time
+                    
+                    # Display screenshot message and skip other gestures for this frame
+                    if "Screenshot" in log_message:
+                        cv2.putText(frame, log_message, (10, frame.shape[0]-40),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+                        cv2.imshow(window_name, frame)
+                        if cv2.waitKey(1) & 0xFF == 27:
+                            break
+                        continue
+
+            # --- Single-Hand Gestures ---
             # Run this first to allow cursor movement while other gestures are checked
             prev_x, prev_y = control_cursor(hand_data[0]['landmarks'], prev_x, prev_y)
 
@@ -93,28 +115,22 @@ def main():
 
             # --- Palm Exit ---
             if palm_timer.update(landmarks):
-                log_message = "Open palm held for 5 seconds. Exiting..."
-                cv2.putText(frame, log_message, (10, frame.shape[0] - 40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2, cv2.LINE_AA)
-                cv2.imshow(window_name, frame)
-                cv2.waitKey(2000)
                 break
 
             elapsed = palm_timer.get_elapsed_time()
             if elapsed > 0:
-                remaining = 5 - elapsed
-                log_message = f"Hold palm to exit: {remaining:.1f}s remaining"
+                log_message = f"Hold palm to exit: {5 - elapsed:.1f}s"
             else:
                 # --- Scroll Gesture ---
                 if current_time - last_scroll_time > SCROLL_DELAY:
-                    scroll_direction = get_scroll_direction(landmarks)
-                    if scroll_direction == 'up':
+                    direction = get_scroll_direction(landmarks)
+                    if direction == "up":
                         scroll_up()
-                        log_message = f"{label} hand: Peace Sign - Scroll Up"
+                        log_message = "Scroll Up"
                         last_scroll_time = current_time
-                    elif scroll_direction == 'down':
+                    elif direction == "down":
                         scroll_down()
-                        log_message = f"{label} hand: Peace Sign - Scroll Down"
+                        log_message = "Scroll Down"
                         last_scroll_time = current_time
 
                 # --- Volume Control ---
@@ -124,17 +140,11 @@ def main():
 
         # Overlay log message
         if log_message:
-            cv2.putText(frame, log_message, (10, frame.shape[0] - 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(frame, log_message, (10, frame.shape[0]-40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
 
         cv2.imshow(window_name, frame)
-        key = cv2.waitKey(1) & 0xFF
-
-        if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
-            print("To close the webcam, press the 'Esc' key.")
-            break
-
-        if key == 27:  # ESC to exit
+        if cv2.waitKey(1) & 0xFF == 27:
             break
 
     cap.release()
