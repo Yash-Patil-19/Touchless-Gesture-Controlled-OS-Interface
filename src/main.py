@@ -2,7 +2,7 @@ import cv2
 import time
 import math
 from hand_tracking import HandTracker
-from gestures import get_scroll_direction, PalmTimer, is_pinch, control_cursor, volume_control_gesture
+from gestures import is_fist, PalmTimer, is_pinch, control_cursor, volume_control_gesture
 from actions import scroll_up, scroll_down, take_screenshot
 import numpy as np
 import os
@@ -14,10 +14,10 @@ except Exception:
     pag = None
 
 # Cooldown and threshold settings
-SCROLL_DELAY = 0.2  # 200 milliseconds
+SCROLL_DELAY = 0.2  
 PINCH_THRESHOLD = 0.05
 PINCH_VIS_RADIUS = 18
-PINCH_COOLDOWN = 0.5  # seconds between clicks per hand
+PINCH_COOLDOWN = 0.5 
 SCREENSHOT_COOLDOWN = 2.0
 
 def main():
@@ -35,9 +35,8 @@ def main():
     prev_x, prev_y = 0, 0
     log_message = ""
 
-    # Per-hand state for pinch clicks
-    last_pinch_state = {}   # e.g. {'Left': False, 'Right': False}
-    last_click_time = {}    # e.g. {'Left': 0.0, 'Right': 0.0}
+    last_pinch_state = {}  
+    last_click_time = {}    
     last_screenshot_time = 0
 
     while True:
@@ -49,7 +48,6 @@ def main():
         h, w, _ = frame.shape
 
         if not hand_data:
-            log_message = "No hands detected"
             palm_timer.reset()
         else:
             current_time = time.time()
@@ -65,7 +63,6 @@ def main():
                         log_message = take_screenshot()
                         last_screenshot_time = current_time
                     
-                    # Display screenshot message and skip other gestures for this frame
                     if "Screenshot" in log_message:
                         cv2.putText(frame, log_message, (10, frame.shape[0]-40),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
@@ -75,10 +72,9 @@ def main():
                         continue
 
             # --- Single-Hand Gestures ---
-            # Run this first to allow cursor movement while other gestures are checked
             prev_x, prev_y = control_cursor(hand_data[0]['landmarks'], prev_x, prev_y)
 
-            # --- Pinch-to-Click (handles all detected hands) ---
+            # --- Click  ---
             for hand in hand_data:
                 landmarks = hand['landmarks']
                 label = hand.get('label', 'Unknown')
@@ -108,7 +104,6 @@ def main():
                 
                 last_pinch_state[label] = bool(pinched)
 
-            # --- Other Gestures (use first detected hand) ---
             hand = hand_data[0]
             landmarks = hand['landmarks']
             label = hand['label']
@@ -123,22 +118,22 @@ def main():
             else:
                 # --- Scroll Gesture ---
                 if current_time - last_scroll_time > SCROLL_DELAY:
-                    direction = get_scroll_direction(landmarks)
-                    if direction == "up":
-                        scroll_up()
-                        log_message = "Scroll Up"
-                        last_scroll_time = current_time
-                    elif direction == "down":
-                        scroll_down()
-                        log_message = "Scroll Down"
-                        last_scroll_time = current_time
+                    if is_fist(landmarks):
+                        if label == "Left":
+                            scroll_up()
+                            log_message = "Scroll Up"
+                            last_scroll_time = current_time
+                        elif label == "Right":
+                            scroll_down()
+                            log_message = "Scroll Down"
+                            last_scroll_time = current_time
 
                 # --- Volume Control ---
                 gesture_result = volume_control_gesture(landmarks, label)
                 if gesture_result:
                     log_message = gesture_result
 
-        # Overlay log message
+        # log message
         if log_message:
             cv2.putText(frame, log_message, (10, frame.shape[0]-40),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)

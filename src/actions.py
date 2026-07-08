@@ -19,8 +19,10 @@ def move_cursor(x, y):
     pyautogui.moveTo(x, y)
 
 def take_screenshot():
-    """Take a screenshot and save it to a 'screenshots' directory."""
-    screenshots_dir = "screenshots"
+    """Take a screenshot and save it to the project's screenshots directory."""
+    # Go up one level from src to the project root, then into screenshots
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    screenshots_dir = os.path.join(project_root, "screenshots")
     if not os.path.exists(screenshots_dir):
         os.makedirs(screenshots_dir)
     
@@ -30,6 +32,7 @@ def take_screenshot():
     try:
         screenshot = pyautogui.screenshot()
         screenshot.save(filename)
-        return f"Screenshot saved: {filename}"
+        # Return just the filename for a cleaner log message
+        return f"Screenshot saved: {os.path.basename(filename)}"
     except Exception as e:
         return f"Error taking screenshot: {e}"
